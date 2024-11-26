@@ -151,7 +151,6 @@ MonoBehaviour:
   bottomPoint: {fileID: 3873221072014778302}
   leftPoint: {fileID: 9174130558731390467}
   rightPoint: {fileID: 4701635055345877711}
-  position: {x: 0, y: 0}
 --- !u!1 &4404301437275733199
 GameObject:
   m_ObjectHideFlags: 0

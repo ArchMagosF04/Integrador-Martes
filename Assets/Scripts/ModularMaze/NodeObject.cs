@@ -7,7 +7,7 @@ public class NodeObject : MonoBehaviour
 {
     public MazeSpace node {  get; private set; }
 
-    private SpriteRenderer sprite;
+    private SpriteRenderer sprite; //We create a reference for the sprite of the object so we can change its color to differentiate what type of node it is.
 
     public bool IsWall {  get; private set; }
 
@@ -18,43 +18,40 @@ public class NodeObject : MonoBehaviour
     [SerializeField] private Transform leftPoint;
     [SerializeField] private Transform rightPoint;
 
-    [SerializeField] private Vector2 position;
-
     private void Awake()
     {
-        sprite = GetComponent<SpriteRenderer>();
+        sprite = GetComponent<SpriteRenderer>(); 
     }
 
-    public void Initialize(int row, int column, TDAGraphGeneric<MazeSpace> graph)
+    public void Initialize(int row, int column, TDAGraphGeneric<MazeSpace> graph) //This function needs to be called when instantiating this objects prefab.
     {
-        node = new MazeSpace(row, column);
-        position = new Vector2(row, column);
-        this.graph = graph;
+        node = new MazeSpace(row, column); //We initialize the node and pass it its row & column.
+        this.graph = graph; //We also give it the graph that it will use so that all nodes have access to the same one.
 
-        graph.AddVertex(node);
+        graph.AddVertex(node); //We add the newly created node to the list of nodes in the graph.
 
-        ToggleWall(true);
+        ToggleWall(true); //All nodes default to walls.
     }
 
-    public void ChangeNodeColor(Color color)
+    public void ChangeNodeColor(Color color) //Gets call to change the color of the node.
     {
         sprite.color = color;
     }
 
-    public void ToggleWall(bool input)
+    public void ToggleWall(bool input) //Changes the node from a wall to a floor tile.
     {
         IsWall = input;
 
         if (input)
         {
             ChangeNodeColor(Color.black);
-            RemoveAllConnections();
+            RemoveAllConnections(); //If it becomes a wall then we remove all conections so that it can not be walked through.
         }
         else
         {
             ChangeNodeColor(Color.white);
-            CreateConnections();
-            ReactivateConnections();
+            CreateConnections(); //We create connections with all non wall nodes in the cardinal directions.
+            ReactivateConnections(); //We also tell those nodes to create connections to us so we have a bidirectional edge.
         }
     }
 
@@ -66,14 +63,13 @@ public class NodeObject : MonoBehaviour
         //Debug.DrawRay(rightPoint.position, Vector2.right * 0.3f, Color.green);
     }
 
-    public void RemoveAllConnections()
+    public void RemoveAllConnections() //Searches the neighbouring nodes to sever their connections with this nodes. 
     {
         RaycastHit2D topNode = Physics2D.Raycast(topPoint.position, Vector2.up, 0.3f);
 
         if (topNode.collider != null) 
         {
-            RemoveConnectionTo(RaycastNodeDetection(topNode).node);
-            RaycastNodeDetection(topNode).RemoveConnectionTo(this.node);
+            SeverLink(topNode);
         } 
 
 
@@ -81,8 +77,7 @@ public class NodeObject : MonoBehaviour
 
         if (bottomNode.collider != null)
         {
-            RemoveConnectionTo(RaycastNodeDetection(bottomNode).node);
-            RaycastNodeDetection(bottomNode).RemoveConnectionTo(this.node);
+            SeverLink(bottomNode);
         }
 
 
@@ -90,8 +85,7 @@ public class NodeObject : MonoBehaviour
 
         if (rightNode.collider != null)
         {
-            RemoveConnectionTo(RaycastNodeDetection(rightNode).node);
-            RaycastNodeDetection(rightNode).RemoveConnectionTo(this.node);
+            SeverLink(rightNode);
         }
 
 
@@ -99,9 +93,14 @@ public class NodeObject : MonoBehaviour
 
         if (leftNode.collider != null)
         {
-            RemoveConnectionTo(RaycastNodeDetection(leftNode).node);
-            RaycastNodeDetection(leftNode).RemoveConnectionTo(this.node);
+            SeverLink(leftNode);
         }
+    }
+
+    public void SeverLink(RaycastHit2D nodeHit) //Deletes the the connection that this node has to the other, and the one the other has to this one. 
+    {
+        RemoveConnectionTo(RaycastNodeDetection(nodeHit).node);
+        RaycastNodeDetection(nodeHit).RemoveConnectionTo(this.node);
     }
 
     public void RemoveConnectionTo(MazeSpace node)
@@ -109,7 +108,7 @@ public class NodeObject : MonoBehaviour
         graph.RemoveEdge(this.node, node);
     }
 
-    public void CreateConnections()
+    public void CreateConnections() //Creates a conection to the nodes in the vicinity, as long as they aren't wall tiles.
     {
         RaycastHit2D topNode = Physics2D.Raycast(topPoint.position, Vector2.up, 0.3f);
 
@@ -155,7 +154,7 @@ public class NodeObject : MonoBehaviour
         }
     }
 
-    private void ReactivateConnections()
+    private void ReactivateConnections() //Tells the nodes in the vicinity, except walls, to create a conection from themselves to this node.
     {
         RaycastHit2D topNode = Physics2D.Raycast(topPoint.position, Vector2.up, 0.3f);
 
@@ -201,7 +200,7 @@ public class NodeObject : MonoBehaviour
         }
     }
 
-    private NodeObject RaycastNodeDetection(RaycastHit2D hit)
+    private NodeObject RaycastNodeDetection(RaycastHit2D hit) //Gets the NodeObject script from a raycastHit.
     {
         NodeObject space = hit.collider.GetComponent<NodeObject>();
 

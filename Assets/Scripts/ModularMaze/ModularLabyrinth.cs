@@ -1,18 +1,22 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection.Emit;
+using TMPro;
 using Unity.VisualScripting;
 using UnityEditor.Experimental.GraphView;
 using UnityEngine;
+using UnityEngine.Experimental.GlobalIllumination;
 
 public class ModularLabyrinth : MonoBehaviour
 {
-    [Header("Labyrinth Variables")]
+    [Header("Labyrinth Variables")] //Variables to be edited before entering play mode to change some parameters in the labyrinth.
 
     [SerializeField] private int Rows = 12;
     [SerializeField] private int Columns = 12;
+    [SerializeField] private float timeBetweenSteps = 0.3f; 
 
-    [Header("Components")]
+    [Header("Components")] //Components needed to operate this script.
 
     [SerializeField] private NodeObject nodePrefab;
 
@@ -20,20 +24,20 @@ public class ModularLabyrinth : MonoBehaviour
 
     [SerializeField] private GameObject player;
 
+    [SerializeField] private TextMeshProUGUI solveText;
 
-
-
+    //All this collections are used for the pathfinding of the exit.
     private Stack<NodeObject> nodesToTravel = new Stack<NodeObject>();
     private List<NodeObject> nodesExplored = new List<NodeObject>();
     private Dictionary<NodeObject, NodeObject> chartingDict = new Dictionary<NodeObject, NodeObject>();
     private Stack<NodeObject> nodesToGoal = new Stack<NodeObject>();
 
-    private NodeObject[,] nodeGrid;
+    private NodeObject[,] nodeGrid; //Stores our created prefabs.
 
-    private NodeObject currentNodeSelected;
+    private NodeObject currentNodeSelected; //References the node selected by the pointer.
     private Vector2 currentNodeLocation = new Vector2 (0, 0);
 
-    private TDAGraphGeneric<MazeSpace> mazeGraph;
+    private TDAGraphGeneric<MazeSpace> mazeGraph; //The graph that stores all the nodes and connections.
 
     private NodeObject startNode;
     private NodeObject endNode;
@@ -49,14 +53,18 @@ public class ModularLabyrinth : MonoBehaviour
         CreateGrid();
 
         SetPointer(0, 0);
+
+        solveText.text = "Labyrinth has no start and/or no end.";
+        solveText.color = Color.yellow;
     }
 
-    private void SetPointer(int row, int column)
+    private void SetPointer(int row, int column) //Sets the selected node to the pointers position.
     {
-        if (row < 0)
+        if (row < 0) //Loops to the other end of the grid 
         {
             row = Rows - 1;
-        }else if (row >= Rows)
+        }
+        else if (row >= Rows)
         {
             row = 0;
         }
@@ -75,28 +83,28 @@ public class ModularLabyrinth : MonoBehaviour
         currentNodeSelected = nodeGrid[row, column];
     }
 
-    private void CreateGrid()
+    private void CreateGrid() //Spawns all the nodes to fill a grid determined by the Rows & Columns chosen in the inspector.
     {
         for (int i = 0; i < Rows; i++)
         {
             for (int j = 0; j < Columns; j++)
             {
                 NodeObject node = Instantiate(nodePrefab, transform);
-                node.transform.position = new Vector2 (transform.position.x + 0.75f * j, transform.position.y + 0.75f * -i);
+                node.transform.position = new Vector2 (transform.position.x + 0.75f * j, transform.position.y + 0.75f * -i); //Sets the position of the node relative to its value on the grid.
 
-                node.Initialize(i, j, mazeGraph);
+                node.Initialize(i, j, mazeGraph); //The NodeObject receives the row & column, and we also send the graph so all nodes reference the same one.
 
-                nodeGrid[i, j] = node;
+                nodeGrid[i, j] = node; //The node is added to the array so it can be accessed later.
             }
         }
     }
 
-    private void Update()
+    private void Update() //Controls the player's inputs.
     {
         MovePointer();
         if (!isSearching) PointerActions();
 
-        if (Input.GetKeyDown(KeyCode.Space) && CanStartToSolve())
+        if (Input.GetKeyDown(KeyCode.Space))
         {
             FindExit();
         }
@@ -105,117 +113,89 @@ public class ModularLabyrinth : MonoBehaviour
         {
             ShowVertexConnections(currentNodeSelected.node);
         }
-    }
+     }
 
     private void FindExit()
     {
-        isSearching = true;
-
-        nodesToTravel.Clear();
-        nodesExplored.Clear();
-        nodesToGoal.Clear();
-        chartingDict.Clear();
-
-        NodeObject currentNode = startNode;
         player.transform.position = nodeGrid[(int)startNode.node.Row, (int)startNode.node.Column].transform.position;
 
-        CatalogNode(currentNode);
-        ExploreLabyrinth(currentNode);
-    }
-
-    private void ExploreLabyrinth(NodeObject currentNode)
-    {
-        while (currentNode != endNode && nodesToTravel.Count > 0)
+        if (ExploreLabyrinth())
         {
-            currentNode = nodesToTravel.Pop();
+            isSearching = true;
 
-            NodeObject BottomNode = null;
-            NodeObject RightNode = null;
-            NodeObject TopNode = null;
-            NodeObject LeftNode = null;
-
-
-
-            if (currentNode.node.Row < Rows)
-            {
-                BottomNode = nodeGrid[currentNode.node.Row + 1, currentNode.node.Column];
-            }
-
-            if (currentNode.node.Column < Columns)
-            {
-                RightNode = nodeGrid[currentNode.node.Row, currentNode.node.Column + 1];
-            }
-
-            if (currentNode.node.Row > 0)
-            {
-                TopNode = nodeGrid[currentNode.node.Row - 1, currentNode.node.Column];
-            }
-
-            if (currentNode.node.Column > 0)
-            {
-                LeftNode = nodeGrid[currentNode.node.Row, currentNode.node.Column - 1];
-            }
-
-            if (BottomNode != null)
-            {
-                if (mazeGraph.DoesEdgeExist(mazeGraph.FindVertex(currentNode.node), mazeGraph.FindVertex(BottomNode.node)) && !nodesExplored.Contains(BottomNode))
-                {
-                    chartingDict.Add(BottomNode, currentNode);
-                    CatalogNode(BottomNode);
-                }
-            }
-            if (RightNode != null)
-            {
-                if (mazeGraph.DoesEdgeExist(mazeGraph.FindVertex(currentNode.node), mazeGraph.FindVertex(RightNode.node)) && !nodesExplored.Contains(RightNode))
-                {
-                    chartingDict.Add(RightNode, currentNode);
-                    CatalogNode(RightNode);
-                }
-            }
-            if (TopNode != null)
-            {
-                if (mazeGraph.DoesEdgeExist(mazeGraph.FindVertex(currentNode.node), mazeGraph.FindVertex(TopNode.node)) && !nodesExplored.Contains(TopNode))
-                {
-                    chartingDict.Add(TopNode, currentNode);
-                    CatalogNode(TopNode);
-                }
-            }
-            if (LeftNode != null)
-            {
-                if (mazeGraph.DoesEdgeExist(mazeGraph.FindVertex(currentNode.node), mazeGraph.FindVertex(LeftNode.node)) && !nodesExplored.Contains(LeftNode))
-                {
-                    chartingDict.Add(LeftNode, currentNode);
-                    CatalogNode(LeftNode);
-                }
-            }
-        }
-
-        if (currentNode == endNode)
-        {
-            Debug.Log("Exit Reachable");
             StartCoroutine(Pathing());
         }
-        else
+    }
+
+    private bool ExploreLabyrinth() //Searches for the exit from the start and returns whether it is possible to solve.
+    {
+        //Clears collections to reset all routes.
+        nodesToGoal.Clear();
+        chartingDict.Clear();
+        nodesToTravel.Clear();
+        nodesExplored.Clear();
+
+        if (startNode == null || endNode == null) //if there is no start or end, it is automaticly unsolvable. 
         {
-            Debug.Log("Couldn't find Exit");
-            isSearching = false;
+            solveText.text = "Labyrinth has no start and/or no end.";
+            solveText.color = Color.yellow;
+
+            return false;
+        }
+
+        CatalogNode(startNode);
+
+        NodeObject currentNode = null;
+
+        while (currentNode != endNode && nodesToTravel.Count > 0) //Does the actual search.
+        {
+            currentNode = nodesToTravel.Pop(); //Selects the node to explore from.
+
+            CheckPosibleConnections(currentNode);
+        }
+
+        if (currentNode == endNode) //If when the search ends and the node we ended up on is the ending node, then returns that it is solvable.
+        {
+            solveText.text = "Labyrinth is Solvable.";
+            solveText.color = Color.green;
+
+            return true;
+        }
+        else //If the program search all possible nodes and didn't find the exit, then it returns that it is not solvable.
+        {
+            solveText.text = "Labyrinth is not Solvable.";
+            solveText.color = Color.red;
+
+            return false;
         }
     }
 
-    private IEnumerator Pathing()
+    private void CheckPosibleConnections(NodeObject currentNode) //Searches all connections of the given node.
+    {
+        foreach (var target in mazeGraph.AdjacencyList[currentNode.node])
+        {
+            if (!nodesExplored.Contains(nodeGrid[target.Item1.Row, target.Item1.Column]))
+            {
+                chartingDict.Add(nodeGrid[target.Item1.Row, target.Item1.Column], currentNode);
+                CatalogNode(nodeGrid[target.Item1.Row, target.Item1.Column]);
+            }
+        }
+    }
+
+    private IEnumerator Pathing() //Makes the player move through the path to the exit.
     {
         NodeObject current = null;
 
         ChartFinalPath(endNode);
 
-        while (nodesToGoal.Count > 0)
+        while (nodesToGoal.Count > 0) //Updates the player's position until it reaches the end.
         {
             current = nodesToGoal.Pop();
             player.transform.position = nodeGrid[(int)current.node.Row, (int)current.node.Column].transform.position;
 
-            Debug.Log($"({current.node.Row}, {current.node.Column})");
+            if (current != startNode && current != endNode) current.ChangeNodeColor(Color.white);
 
-            yield return new WaitForSeconds(0.5f);
+            yield return new WaitForSeconds(timeBetweenSteps);
         }
 
         Debug.Log("Exit Reached");
@@ -223,10 +203,13 @@ public class ModularLabyrinth : MonoBehaviour
         isSearching = false;
     }
 
-    private void ChartFinalPath(NodeObject node)
+    private void ChartFinalPath(NodeObject node) //Creates a (not always optimal) route that goes directly to the exit from the start.
     {
         nodesToGoal.Push(node);
-        if (chartingDict.ContainsKey(node))
+
+        if (node != startNode && node != endNode) node.ChangeNodeColor(Color.yellow); //Colors the path tiles in yellow.
+
+        if (chartingDict.ContainsKey(node)) 
         {
             ChartFinalPath(chartingDict[node]);
         }
@@ -244,20 +227,13 @@ public class ModularLabyrinth : MonoBehaviour
     }
 
 
-    private void CatalogNode(NodeObject node)
+    private void CatalogNode(NodeObject node) //Archives the given node as an explored one.
     {
         nodesToTravel.Push(node);
         nodesExplored.Add(node);
     }
 
-    private bool CanStartToSolve()
-    {
-        if (startNode == null || endNode == null) return false;
-
-        return true;
-    }
-
-    private void MovePointer()
+    private void MovePointer() //Moves the pointer around the grid.
     {
         if (Input.GetKeyDown(KeyCode.W))
         {
@@ -277,42 +253,51 @@ public class ModularLabyrinth : MonoBehaviour
         }
     }
 
-    private void PointerActions()
+    private void PointerActions() //Turns the selected node into the different types.
     {
         if (Input.GetKeyDown(KeyCode.Alpha1))
         {
             SetStartingPoint();
+            ExploreLabyrinth();
         }
 
         if (Input.GetKeyDown(KeyCode.Alpha2))
         {
             SetEndPoint();
+            ExploreLabyrinth();
         }
 
         if (Input.GetKeyDown(KeyCode.Alpha3))
         {
             MakeFloorNode();
+            ExploreLabyrinth();
         }
 
         if (Input.GetKeyDown(KeyCode.Alpha4))
         {
             MakeWallNode();
+            ExploreLabyrinth();
         }
     }
 
-    private void SetStartingPoint()
+    private void SetStartingPoint() 
     {
-        if (currentNodeSelected == endNode) return;
+        if (currentNodeSelected == endNode) //If overriding the end node, then set it to null, so the same node can't be both the start and end.
+        {
+            endNode = null;
+        }
 
-        if (startNode != null)
+        if (startNode != null) //If there is an existing start node, then change it to a normal floor tile.
         {
             startNode.ChangeNodeColor(Color.white);
         }
 
-        if (currentNodeSelected.IsWall)
+        if (currentNodeSelected.IsWall) //if the selected node is a wall, turned into floor, so the node can have connections.
         {
             currentNodeSelected.ToggleWall(false);
         }
+
+        //Makes the selected node the new start node.
 
         startNode = currentNodeSelected;
         startNode.ChangeNodeColor(Color.green);
@@ -322,17 +307,22 @@ public class ModularLabyrinth : MonoBehaviour
 
     private void SetEndPoint()
     {
-        if (currentNodeSelected == startNode) return;
+        if (currentNodeSelected == startNode) //If overriding the start node, then set it to null, so the same node can't be both the start and end.
+        {
+            startNode = null;
+        }
 
-        if (endNode != null)
+        if (endNode != null) //If there is an existing end node, then change it to a normal floor tile.
         {
             endNode.ChangeNodeColor(Color.white);
         }
 
-        if (currentNodeSelected.IsWall)
+        if (currentNodeSelected.IsWall) //if the selected node is a wall, turned into floor, so the node can have connections.
         {
             currentNodeSelected.ToggleWall(false);
         }
+
+        //Makes the selected node the new end node.
 
         endNode = currentNodeSelected;
         endNode.ChangeNodeColor(Color.red);
@@ -340,7 +330,9 @@ public class ModularLabyrinth : MonoBehaviour
 
     private void MakeFloorNode()
     {
-        currentNodeSelected.ToggleWall(false);
+        currentNodeSelected.ToggleWall(false); //Makes the selected node a floor tile.
+
+        //if the selected node is the start or end then, set them to null to turn them into normal floor tiles.
 
         if (currentNodeSelected == startNode)
         {
@@ -355,7 +347,9 @@ public class ModularLabyrinth : MonoBehaviour
 
     private void MakeWallNode()
     {
-        currentNodeSelected.ToggleWall(true);
+        currentNodeSelected.ToggleWall(true); //Makes the selected node a wall tile.
+
+        //if the selected node is the start or end then, set them to null to turn them into walls, as they don't have connections.
 
         if (currentNodeSelected == startNode)
         {
